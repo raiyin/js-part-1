@@ -4,3 +4,9 @@ body {
 .mui-btn {
     transition: none;
 }
+.form-wrapper{
+    margin-bottom: 2em;
+}
+.out-wrapper{
+
+}

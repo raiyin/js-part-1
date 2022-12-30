@@ -1,42 +1,37 @@
-<html>
-<head>
-    <title>JS Part 1 Homework</title>
-    <link href="//cdn.muicss.com/mui-0.10.3/css/mui.min.css" rel="stylesheet" type="text/css" />
-    <link href="index.css" rel="stylesheet" type="text/css" />
-</head>
-<body>
-    <div class="mui-container">
-        <form id="form" class="mui-form">
-            <legend>Calculate route</legend>
-            <datalist id="countriesList"></datalist>
-            <div class="mui-textfield mui-textfield--float-label">
-                <input
-                    type="text"
-                    id="fromCountry"
-                    list="countriesList"
-                />
-                <label>From</label>
+<!DOCTYPE html>
+<html lang="ru-ru">
+    <head>
+        <title>JS Part 1 Homework</title>
+        <link rel="icon" type="image/ico" href="./favicon.ico">
+        <link href="//cdn.muicss.com/mui-0.10.3/css/mui.min.css" rel="stylesheet" type="text/css" >
+        <link href="index.css" rel="stylesheet" type="text/css" >
+    </head>
+    <body>
+        <div class="mui-container">
+            <div class="form-wrapper">
+                <form id="form" class="mui-form">
+                    <legend>Calculate route</legend>
+                    <datalist id="countriesList"></datalist>
+                    <div class="mui-textfield mui-textfield--float-label">
+                        <input type="text" id="fromCountry" list="countriesList" />
+                        <label>From</label>
+                    </div>
+                    <div class="mui-textfield mui-textfield--float-label">
+                        <input type="text" id="toCountry" list="countriesList" />
+                        <label>To</label>
+                    </div>
+                    <button type="submit" id="submit" class="mui-btn mui-btn--primary">
+                        Go
+                    </button>
+                </form>
             </div>
-            <div class="mui-textfield mui-textfield--float-label">
-                <input
-                    type="text"
-                    id="toCountry"
-                    list="countriesList"
-                />
-                <label>To</label>
-            </div>
-            <button
-                type="submit"
-                id="submit"
-                class="mui-btn mui-btn--primary"
-            >
-                Go
-            </button>
-        </form>
 
-        <div id="output" class="mui--text-body1"></div>
-    </div>
-    <script src="//cdn.muicss.com/mui-0.10.3/js/mui.min.js"></script>
-    <script src="index.js"></script>
-</body>
+            <div class="out-wrapper">
+                <div id="output" class="mui--text-body1">
+                </div>
+            </div>
+        </div>
+        <script src="//cdn.muicss.com/mui-0.10.3/js/mui.min.js"></script>
+        <script src="index.js"></script>
+    </body>
 </html>
