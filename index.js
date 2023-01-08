@@ -1,35 +1,72 @@
 let requestCounter = 0;
+// Интересно знать изначальную причину ошибки, место появления
+// и маршрут ее поднятия до верхнего обработчика.
+let error = {
+    status: '',
+    stacktrace: '',
+};
+
+function printErrorMessage(error) {
+    if (error.status && error.stacktrace) {
+        console.error(error.status);
+        console.error(error.stacktrace);
+    } else {
+        console.error(error);
+    }
+}
 
 async function getData(url) {
     // https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch
-    const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-            'Content-Type': 'application/json',
+    let response;
+    try {
+        response = fetch(url, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            redirect: 'follow',
+        });
+    } catch (error) {
+        error.status = error;
+        error.stacktrace += `getdata(${url})\n`;
+        throw error;
+    }
+
+    response = await response.then(
+        (response) => {
+            if (!response.ok) {
+                error.status = `Network response in getData was not OK, arg was ${url}, response was ${response}`;
+                error.stacktrace += `getdata(${url})\n`;
+                throw error;
+                // throw new Error(`Network response in getData was not OK, arg was ${url}, response was ${response}`);
+            }
+            return response;
         },
-        redirect: 'follow',
-    }).then((response) => {
-        if (!response.ok) {
-            const err = new Error(`HTTP status code: ${response.status}`);
-            err.response = response;
-            err.status = response.status;
-            throw err;
+        (reason) => {
+            throw new Error(`The request was rejected. Reason is ${reason}`);
         }
-        return response;
-    });
+    );
+
     requestCounter += 1;
     return response.json();
 }
 
 async function loadCountriesData() {
-    const countries = await getData('https://restcountries.com/v3.1/all?fields=name&fields=cca3&fields=area');
+    let countries = [];
+    try {
+        countries = await getData('https://restcountries.com/v3.1/all?fields=name&fields=cca3&fields=area');
+    } catch (error) {
+        error.status = error;
+        error.stacktrace += `loadCountriesData()\n`;
+        throw error;
+    }
     return countries.reduce((result, country) => {
         result[country.cca3] = country;
         return result;
     }, {});
 }
 
-const baseUrl = 'https://restcountries.com/v3.1/alpha?fields=borders&fields=cca3&codes=';
+const baseUrl = 'https://restcountries.com/v3.1/alpha?fields=borders&fields=cca3&codes={code}';
 const form = document.getElementById('form');
 const fromCountry = document.getElementById('fromCountry');
 const toCountry = document.getElementById('toCountry');
@@ -44,30 +81,41 @@ let currentRoute = [];
 let layerCounter = 0;
 
 // По уже скачанному массиву данных создаёт строки маршрута методом поиска в глубину.
-function CreateRoute(routes, to) {
+function createRoute(routes, to) {
     currentRoute = [];
-    currentRoute.push(Object.keys(graph[0])[0]);
-    go(0, graph[0][Object.keys(graph[0])[0]], to, routes);
+    const startCountry = Object.keys(graph[0])[0];
+    currentRoute.push(startCountry);
+    // Запукаем рекурсивную функцию для построения списка маршрутов.
+    go(0, graph[0][startCountry], to, routes);
 }
 
-function go(depth, currentNode, destCountry, routes) {
+function go(depth, currentNode, destCountry, completeRoutes) {
     const borders = graph[depth][currentNode.cca3].borders;
+    const destCountryCode = codeByCountryDict[destCountry];
     for (let bIndex = 0; bIndex < borders.length; bIndex++) {
         // Если сосед текущего узла содержит страну назначения, то добаляем страну назначения
         // и сохраняем маршрут.
-        if (borders[bIndex] === codeByCountryDict[destCountry]) {
-            currentRoute.push(codeByCountryDict[destCountry]);
-            routes.push(currentRoute.toString());
+        const currentNodeBorder = borders[bIndex];
+        if (currentNodeBorder === destCountryCode) {
+            currentRoute.push(destCountryCode);
+            completeRoutes.push(currentRoute.map((x) => x));
             currentRoute.pop();
             return;
-        } else if (depth + 1 < layerCounter && graph[depth + 1][borders[bIndex]] !== undefined) {
+        } else if (depth + 1 < layerCounter && graph[depth + 1][currentNodeBorder] !== undefined) {
             // Если не вышли за глубину графа и страна не была уже просмотрена на предыдущих уровнях.
             // Иначе делаем по очереди каждый узел текущим и "We need to go deeper".
-            currentRoute.push(borders[bIndex]);
-            go(depth + 1, graph[depth + 1][borders[bIndex]], destCountry, routes);
+            currentRoute.push(currentNodeBorder);
+            go(depth + 1, graph[depth + 1][currentNodeBorder], destCountry, completeRoutes);
             currentRoute.pop();
         }
     }
+}
+
+function prettifyOneRoute(routes, index) {
+    let result = '<li>';
+    result += routes[index].map((item) => countriesData[item].name.common).join('->');
+    result += '</li>';
+    return result;
 }
 
 function prettifyRoutes(routes) {
@@ -78,13 +126,7 @@ function prettifyRoutes(routes) {
     result += '<h4>Найденные маршруты:</h4>';
     result += '<ul>';
     for (let routeIndex = 0; routeIndex < routes.length; routeIndex++) {
-        result += '<li>';
-        result += routes[routeIndex]
-            .split(',')
-            // eslint-disable-next-line no-loop-func
-            .map((item) => countriesData[item].name.common)
-            .join('->');
-        result += '</li>';
+        result += prettifyOneRoute(routes, routeIndex);
     }
     result += '</ul>';
     return result;
@@ -93,13 +135,19 @@ function prettifyRoutes(routes) {
 async function getCountriesByCodes(countriesCodeList) {
     const bordersResponse = [];
     try {
-        const arrayFetchData = countriesCodeList.map((code) => getData(baseUrl + code));
-        const data = await Promise.allSettled(arrayFetchData);
-        data.forEach((item) => bordersResponse.push(item.value[0]));
+        const arrayFetchData = countriesCodeList.map((code) => getData(baseUrl.replace('{code}', code)));
+        const data = await Promise.all(arrayFetchData);
+        data.forEach((item) => bordersResponse.push(item[0]));
         return bordersResponse;
-    } catch (e) {
-        console.log(e);
-        return false;
+    } catch (error) {
+        // Думал, что хорошей идеей будет получить хоть что-то, и потом искать в неполных данныз.
+        // Но путём несложных логических
+        // рассуждений пришёл к выводу, что в случае ошибки показывать пользователю сообщение
+        // типа "Маршрут мы не нашли, но там ошибки были, так что мы не уверены, что его нет" не
+        // очень хорошо. Лучше сразу говорить, что у нас была ошибка, повторите попытку.
+        error.status = error;
+        error.stacktrace += `getCountriesByCodes(${[...countriesCodeList]})\n`;
+        throw error;
     }
 }
 
@@ -107,6 +155,7 @@ async function findPath(from, to) {
     // Метод работает по wave-подобному методу. Как только на какой-то глубине
     // находит необходимую страну, то более глубокие маршруты искать прекращает.
     layerCounter = 0;
+    error = {};
     watchedCountries = new Set();
     graph = [];
     let scanQueue = [];
@@ -124,17 +173,20 @@ async function findPath(from, to) {
         // 2)
         // Второй вариант. Эмулируем получение нескольких стран через получение одной.
         let countries = [];
-        // eslint-disable-next-line no-loop-func, no-await-in-loop
-        countries = await getCountriesByCodes(scanQueue);
-
-        if (!Array.isArray(countries) || countries.includes(undefined)) {
-            return `<h3>Ошибка выполнения запроса.<h3>`;
+        try {
+            // eslint-disable-next-line no-await-in-loop
+            countries = await getCountriesByCodes(scanQueue);
+        } catch (error) {
+            printErrorMessage(error);
+            return `<h3>Ошибка при выполнении запроса.<h3>`;
         }
+
         scanQueue = [];
 
         // Обновляем список просмотренных стран.
-        // eslint-disable-next-line no-loop-func
-        countries.forEach((country) => watchedCountries.add(country.cca3));
+        for (let countryIndex = 0; countryIndex < countries.length; countryIndex++) {
+            watchedCountries.add(countries[countryIndex].cca3);
+        }
         const currentLayer = {};
         countries.forEach((country) => (currentLayer[country.cca3] = country));
 
@@ -165,14 +217,13 @@ async function findPath(from, to) {
     }
 
     if (routeWasFind) {
-        CreateRoute(routes, to);
+        createRoute(routes, to);
         return prettifyRoutes(routes);
     }
 
     return `<h3>Из ${from} в ${to} маршрута нет или маршрут больше 10.<h3>`;
 }
 
-// eslint-disable-next-line consistent-return
 async function requestSubmit(event) {
     event.preventDefault();
     // TODO: Вывести, откуда и куда едем, и что идёт расчёт.
@@ -207,6 +258,7 @@ async function requestSubmit(event) {
     disableUi(true);
     output.innerHTML = await findPath(fromCountry.value, toCountry.value);
     disableUi(false);
+    return true;
 }
 
 function disableUi(isDisabled) {
@@ -220,8 +272,14 @@ function disableUi(isDisabled) {
 
 (async () => {
     disableUi(true);
-    // const countriesData = await loadCountriesData();
-    countriesData = await loadCountriesData();
+    try {
+        countriesData = await loadCountriesData();
+    } catch (error) {
+        printErrorMessage(error);
+        output.textContent = 'Something went wrong. Try to reset your compluter.';
+        // Интерфейс не разблочиваем. Ничего хорошего уже не получится.
+        return;
+    }
     output.textContent = '';
 
     // Заполняем список стран для подсказки в инпутах
