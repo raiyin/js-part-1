@@ -1,7 +1,8 @@
 let requestCounter = 0;
 // Интересно знать изначальную причину ошибки, место появления
-// и маршрут ее поднятия до верхнего обработчика.
-let error = {
+// и маршрут ее поднятия до верхнего обработчика. Стектрейс в стандартном
+// объекте Error не стандартизирован, поэтому ввёл свой велосипед.
+let myError = {
     status: '',
     stacktrace: '',
 };
@@ -15,50 +16,36 @@ function printErrorMessage(error) {
     }
 }
 
-async function getData(url) {
+async function getDataAsync(url) {
     // https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch
-    let response;
-    try {
-        response = fetch(url, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            redirect: 'follow',
-        });
-    } catch (error) {
-        error.status = error;
-        error.stacktrace += `getdata(${url})\n`;
-        throw error;
+    const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        redirect: 'follow',
+    });
+
+    if (response.ok) {
+        requestCounter += 1;
+        return response.json();
     }
 
-    response = await response.then(
-        (response) => {
-            if (!response.ok) {
-                error.status = `Network response in getData was not OK, arg was ${url}, response was ${response}`;
-                error.stacktrace += `getdata(${url})\n`;
-                throw error;
-                // throw new Error(`Network response in getData was not OK, arg was ${url}, response was ${response}`);
-            }
-            return response;
-        },
-        (reason) => {
-            throw new Error(`The request was rejected. Reason is ${reason}`);
-        }
-    );
-
-    requestCounter += 1;
-    return response.json();
+    myError.status = `Network response in getDataAsync was not OK, arg was ${url}, response was ${response}`;
+    myError.stacktrace += `getDataAsync(${url})\n`;
+    throw myError;
 }
 
 async function loadCountriesData() {
     let countries = [];
     try {
-        countries = await getData('https://restcountries.com/v3.1/all?fields=name&fields=cca3&fields=area');
+        // countries = await getDataAsync('http://httpstat.us/404/v3.1/all?fields=name&fields=cca3&fields=area');
+        // countries = await getDataAsync('http://httpstat.us/500/v3.1/all?fields=name&fields=cca3&fields=area');
+        countries = await getDataAsync('https://restcountries.com/v3.1/all?fields=name&fields=cca3&fields=area');
     } catch (error) {
-        error.status = error;
-        error.stacktrace += `loadCountriesData()\n`;
-        throw error;
+        myError.status = error;
+        myError.stacktrace += `loadCountriesData()\n`;
+        throw myError;
     }
     return countries.reduce((result, country) => {
         result[country.cca3] = country;
@@ -67,6 +54,8 @@ async function loadCountriesData() {
 }
 
 const baseUrl = 'https://restcountries.com/v3.1/alpha?fields=borders&fields=cca3&codes={code}';
+// const baseUrl = 'http://httpstat.us/404&codes={code}';
+// const baseUrl = 'http://httpstat.us/500&codes={code}';
 const form = document.getElementById('form');
 const fromCountry = document.getElementById('fromCountry');
 const toCountry = document.getElementById('toCountry');
@@ -135,7 +124,7 @@ function prettifyRoutes(routes) {
 async function getCountriesByCodes(countriesCodeList) {
     const bordersResponse = [];
     try {
-        const arrayFetchData = countriesCodeList.map((code) => getData(baseUrl.replace('{code}', code)));
+        const arrayFetchData = countriesCodeList.map((code) => getDataAsync(baseUrl.replace('{code}', code)));
         const data = await Promise.all(arrayFetchData);
         data.forEach((item) => bordersResponse.push(item[0]));
         return bordersResponse;
@@ -145,9 +134,9 @@ async function getCountriesByCodes(countriesCodeList) {
         // рассуждений пришёл к выводу, что в случае ошибки показывать пользователю сообщение
         // типа "Маршрут мы не нашли, но там ошибки были, так что мы не уверены, что его нет" не
         // очень хорошо. Лучше сразу говорить, что у нас была ошибка, повторите попытку.
-        error.status = error;
-        error.stacktrace += `getCountriesByCodes(${[...countriesCodeList]})\n`;
-        throw error;
+        myError.status = error;
+        myError.stacktrace += `getCountriesByCodes(${[...countriesCodeList]})\n`;
+        throw myError;
     }
 }
 
@@ -155,7 +144,7 @@ async function findPath(from, to) {
     // Метод работает по wave-подобному методу. Как только на какой-то глубине
     // находит необходимую страну, то более глубокие маршруты искать прекращает.
     layerCounter = 0;
-    error = {};
+    myError = {};
     watchedCountries = new Set();
     graph = [];
     let scanQueue = [];
@@ -169,7 +158,7 @@ async function findPath(from, to) {
         // Скачиваем соседей.
         // 1) Был первый вариант рабочий. Использует 'codes', поэтому является незаконным,
         // так как по условию нужно тянуть страны по одной.
-        // const countries = await getData(baseUrl + scanQueue);
+        // const countries = await getDataAsync(baseUrl + scanQueue);
         // 2)
         // Второй вариант. Эмулируем получение нескольких стран через получение одной.
         let countries = [];
